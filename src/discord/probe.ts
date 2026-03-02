@@ -38,7 +38,7 @@ async function fetchDiscordApplicationMe(
   timeoutMs: number,
   fetcher: typeof fetch,
 ): Promise<{ id?: string; flags?: number } | undefined> {
-  const normalized = normalizeDiscordToken(token);
+  const normalized = normalizeDiscordToken(token, "channels.discord.token");
   if (!normalized) {
     return undefined;
   }
@@ -118,7 +118,7 @@ export async function probeDiscord(
   const started = Date.now();
   const fetcher = opts?.fetcher ?? fetch;
   const includeApplication = opts?.includeApplication === true;
-  const normalized = normalizeDiscordToken(token);
+  const normalized = normalizeDiscordToken(token, "channels.discord.token");
   const result: DiscordProbe = {
     ok: false,
     status: null,
@@ -174,7 +174,7 @@ export async function probeDiscord(
  * Number.MAX_SAFE_INTEGER.
  */
 export function parseApplicationIdFromToken(token: string): string | undefined {
-  const normalized = normalizeDiscordToken(token);
+  const normalized = normalizeDiscordToken(token, "channels.discord.token");
   if (!normalized) {
     return undefined;
   }
@@ -198,7 +198,7 @@ export async function fetchDiscordApplicationId(
   timeoutMs: number,
   fetcher: typeof fetch = fetch,
 ): Promise<string | undefined> {
-  const normalized = normalizeDiscordToken(token);
+  const normalized = normalizeDiscordToken(token, "channels.discord.token");
   if (!normalized) {
     return undefined;
   }
