@@ -285,6 +285,24 @@ description: test skill
     }
   });
 
+  it("does not flag non-loopback bind without auth when gateway password uses SecretRef", async () => {
+    const cfg: OpenClawConfig = {
+      gateway: {
+        bind: "lan",
+        auth: {
+          password: {
+            source: "env",
+            provider: "default",
+            id: "OPENCLAW_GATEWAY_PASSWORD",
+          },
+        },
+      },
+    };
+
+    const res = await audit(cfg, { env: {} });
+    expectNoFinding(res, "gateway.bind_no_auth");
+  });
+
   it("evaluates gateway auth rate-limit warning based on configuration", async () => {
     const cases: Array<{
       name: string;
@@ -1191,6 +1209,27 @@ description: test skill
     expectNoFinding(res, "browser.control_no_auth");
   });
 
+  it("does not flag browser control auth when gateway password uses SecretRef", async () => {
+    const cfg: OpenClawConfig = {
+      gateway: {
+        controlUi: { enabled: false },
+        auth: {
+          password: {
+            source: "env",
+            provider: "default",
+            id: "OPENCLAW_GATEWAY_PASSWORD",
+          },
+        },
+      },
+      browser: {
+        enabled: true,
+      },
+    };
+
+    const res = await audit(cfg, { env: {} });
+    expectNoFinding(res, "browser.control_no_auth");
+  });
+
   it("warns when remote CDP uses HTTP", async () => {
     const cfg: OpenClawConfig = {
       browser: {
@@ -1339,6 +1378,24 @@ description: test skill
         feishu: {
           appId: "cli_test",
           appSecret: "secret_test",
+        },
+      },
+    };
+
+    const res = await audit(cfg);
+    expectFinding(res, "channels.feishu.doc_owner_open_id", "warn");
+  });
+
+  it("treats Feishu SecretRef appSecret as configured for doc tool risk detection", async () => {
+    const cfg: OpenClawConfig = {
+      channels: {
+        feishu: {
+          appId: "cli_test",
+          appSecret: {
+            source: "env",
+            provider: "default",
+            id: "FEISHU_APP_SECRET",
+          },
         },
       },
     };
@@ -2630,6 +2687,50 @@ description: test skill
       const cfg: OpenClawConfig = {
         channels: {
           discord: { enabled: true, token: "t" },
+        },
+      };
+      const res = await runSecurityAudit({
+        config: cfg,
+        includeFilesystem: true,
+        includeChannelSecurity: false,
+        stateDir,
+        configPath: path.join(stateDir, "openclaw.json"),
+        execDockerRawFn: execDockerRawUnavailable,
+      });
+
+      expect(res.findings).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            checkId: "plugins.extensions_no_allowlist",
+            severity: "critical",
+          }),
+        ]),
+      );
+    } finally {
+      if (prevDiscordToken == null) {
+        delete process.env.DISCORD_BOT_TOKEN;
+      } else {
+        process.env.DISCORD_BOT_TOKEN = prevDiscordToken;
+      }
+    }
+  });
+
+  it("treats SecretRef channel credentials as configured for extension allowlist severity", async () => {
+    const prevDiscordToken = process.env.DISCORD_BOT_TOKEN;
+    delete process.env.DISCORD_BOT_TOKEN;
+    const stateDir = sharedExtensionsStateDir;
+
+    try {
+      const cfg: OpenClawConfig = {
+        channels: {
+          discord: {
+            enabled: true,
+            token: {
+              source: "env",
+              provider: "default",
+              id: "DISCORD_BOT_TOKEN",
+            } as unknown as string,
+          },
         },
       };
       const res = await runSecurityAudit({
