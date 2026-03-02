@@ -10,6 +10,8 @@ import {
 import { withTempHome } from "./test-helpers.js";
 import type { OpenClawConfig } from "./types.js";
 
+const IS_WINDOWS = process.platform === "win32";
+
 describe("config backup rotation", () => {
   it("keeps a 5-deep backup ring for config writes", async () => {
     await withTempHome(async () => {
@@ -55,7 +57,8 @@ describe("config backup rotation", () => {
     });
   });
 
-  it("hardenBackupPermissions sets 0o600 on all backup files", async () => {
+  // chmod is a no-op on Windows — 0o600 can never be observed there.
+  it.skipIf(IS_WINDOWS)("hardenBackupPermissions sets 0o600 on all backup files", async () => {
     await withTempHome(async () => {
       const stateDir = process.env.OPENCLAW_STATE_DIR?.trim();
       if (!stateDir) {
@@ -114,30 +117,34 @@ describe("config backup rotation", () => {
     });
   });
 
-  it("maintainConfigBackups composes rotate/copy/harden/prune flow", async () => {
-    await withTempHome(async () => {
-      const stateDir = process.env.OPENCLAW_STATE_DIR?.trim();
-      if (!stateDir) {
-        throw new Error("Expected OPENCLAW_STATE_DIR to be set by withTempHome");
-      }
-      const configPath = path.join(stateDir, "openclaw.json");
-      await fs.writeFile(configPath, JSON.stringify({ token: "secret" }), { mode: 0o600 });
-      await fs.writeFile(`${configPath}.bak`, "previous", { mode: 0o644 });
-      await fs.writeFile(`${configPath}.bak.orphan`, "old");
+  // chmod is a no-op on Windows — permission assertions will always fail.
+  it.skipIf(IS_WINDOWS)(
+    "maintainConfigBackups composes rotate/copy/harden/prune flow",
+    async () => {
+      await withTempHome(async () => {
+        const stateDir = process.env.OPENCLAW_STATE_DIR?.trim();
+        if (!stateDir) {
+          throw new Error("Expected OPENCLAW_STATE_DIR to be set by withTempHome");
+        }
+        const configPath = path.join(stateDir, "openclaw.json");
+        await fs.writeFile(configPath, JSON.stringify({ token: "secret" }), { mode: 0o600 });
+        await fs.writeFile(`${configPath}.bak`, "previous", { mode: 0o644 });
+        await fs.writeFile(`${configPath}.bak.orphan`, "old");
 
-      await maintainConfigBackups(configPath, fs);
+        await maintainConfigBackups(configPath, fs);
 
-      // A new primary backup is created from the current config.
-      await expect(fs.readFile(`${configPath}.bak`, "utf-8")).resolves.toBe(
-        JSON.stringify({ token: "secret" }),
-      );
-      // Prior primary backup gets rotated into ring slot 1.
-      await expect(fs.readFile(`${configPath}.bak.1`, "utf-8")).resolves.toBe("previous");
-      // Mode hardening still applies.
-      const primaryBackupStat = await fs.stat(`${configPath}.bak`);
-      expect(primaryBackupStat.mode & 0o777).toBe(0o600);
-      // Out-of-ring orphan gets pruned.
-      await expect(fs.stat(`${configPath}.bak.orphan`)).rejects.toThrow();
-    });
-  });
+        // A new primary backup is created from the current config.
+        await expect(fs.readFile(`${configPath}.bak`, "utf-8")).resolves.toBe(
+          JSON.stringify({ token: "secret" }),
+        );
+        // Prior primary backup gets rotated into ring slot 1.
+        await expect(fs.readFile(`${configPath}.bak.1`, "utf-8")).resolves.toBe("previous");
+        // Mode hardening still applies.
+        const primaryBackupStat = await fs.stat(`${configPath}.bak`);
+        expect(primaryBackupStat.mode & 0o777).toBe(0o600);
+        // Out-of-ring orphan gets pruned.
+        await expect(fs.stat(`${configPath}.bak.orphan`)).rejects.toThrow();
+      });
+    },
+  );
 });
